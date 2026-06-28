@@ -15,8 +15,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
+# Exact URLs confirmed working
 SOURCES = [
-    {"name": "acmo", "url": "https://acmo.org/find-a-manager/management-firm-directory", "province": "ON"},
+    {"name": "acmo", "url": "https://acmo.org/acmo-2000-certification/corporate-companies", "province": "ON"},
     {"name": "cci_toronto", "url": "https://ccitoronto.ca/directory", "province": "ON"},
     {"name": "cci_golden_horseshoe", "url": "https://www.cci-ghc.ca/directory", "province": "ON"},
     {"name": "cci_london", "url": "https://www.ccilondon.ca/directory", "province": "ON"},
@@ -35,58 +36,23 @@ SOURCES = [
     {"name": "cci_newfoundland", "url": "https://cci-newfoundland.ca/directory", "province": "NL"},
 ]
 
-TEAM_KEYWORDS = ["team", "staff", "people", "about", "management", "our-team", "meet", "who-we-are"]
-PORTFOLIO_KEYWORDS = ["properties", "portfolio", "buildings", "communities", "our-properties", "managed"]
+TEAM_KEYWORDS = ["team", "staff", "people", "our-team", "meet-us", "who-we-are", "about-us"]
+PORTFOLIO_KEYWORDS = ["properties", "portfolio", "buildings", "communities", "our-properties", "managed-properties"]
 
-JUNK_KEYWORDS = [
-    "login", "subscribe", "newsletter", "facebook", "twitter", "linkedin",
-    "instagram", "youtube", "mailto", "javascript", "privacy", "terms",
-    "cookie", "sitemap", "careers", "join", "membership", "donate",
-    "sponsor", "advertis", "event", "news", "blog", "forum", "search",
-    "contact us", "home", "learn more", "read more", "click here",
-    "sign up", "log in", "register", "forgot", "reset", "popup"
+ACMO_DOMAIN = "acmo.org"
+CCI_DOMAINS = [
+    "ccitoronto.ca", "cci-ghc.ca", "ccilondon.ca", "cci-easternontario.ca",
+    "cci-windsor.ca", "cci-grc.ca", "ccihuronia.com", "ccibcchapter.ca",
+    "ccinorthalberta.com", "ccisouthalberta.com", "cci-manitoba.ca",
+    "cci-northsaskatchewan.ca", "cci-southsaskatchewan.ca", "ccinovascotia.ca",
+    "condogenie.com", "cci-newfoundland.ca", "cci.ca"
 ]
 
-JUNK_DOMAINS = [
+SKIP_DOMAINS = [
     "facebook.com", "twitter.com", "linkedin.com", "instagram.com",
     "youtube.com", "google.com", "apple.com", "microsoft.com",
-    "list-manage.com", "mailchimp.com", "constantcontact.com",
-    "condogenie.com", "cci.ca", "acmo.org", "ccitoronto.ca",
-    "cci-ghc.ca", "ccilondon.ca", "cci-easternontario.ca",
-    "cci-windsor.ca", "cci-grc.ca", "ccihuronia.com",
-    "ccibcchapter.ca", "ccinorthalberta.com", "ccisouthalberta.com",
-    "cci-manitoba.ca", "cci-northsaskatchewan.ca", "cci-southsaskatchewan.ca",
-    "ccinovascotia.ca", "cci-newfoundland.ca"
+    "list-manage.com", "mailchimp.com", "avanan.click"
 ]
-
-def is_valid_company_link(text, url):
-    if not text or not url:
-        return False
-    if len(text.strip()) < 4:
-        return False
-    if len(text.strip()) > 80:
-        return False
-    url_lower = url.lower()
-    text_lower = text.lower().strip()
-    if url_lower.startswith("mailto:"):
-        return False
-    if url_lower.startswith("javascript:"):
-        return False
-    if url_lower.startswith("#"):
-        return False
-    if not url_lower.startswith("http"):
-        return False
-    for junk in JUNK_KEYWORDS:
-        if junk in text_lower or junk in url_lower:
-            return False
-    parsed = urlparse(url)
-    domain = parsed.netloc.lower().replace("www.", "")
-    for junk_domain in JUNK_DOMAINS:
-        if junk_domain in domain:
-            return False
-    if not re.search(r'[a-zA-Z]{3,}', text):
-        return False
-    return True
 
 def delay():
     time.sleep(random.uniform(3, 7))
@@ -108,18 +74,29 @@ def extract_email(text):
     emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
     return emails[0].strip() if emails else None
 
+def get_domain(url):
+    return urlparse(url).netloc.lower().replace("www.", "")
+
+def is_skip_domain(url):
+    domain = get_domain(url)
+    for skip in SKIP_DOMAINS + CCI_DOMAINS + [ACMO_DOMAIN]:
+        if skip in domain:
+            return True
+    return False
+
 def find_subpage(base_url, keywords):
     soup = get_soup(base_url)
     if not soup:
         return None
+    base_domain = get_domain(base_url)
     links = soup.find_all("a", href=True)
     for link in links:
         href = link["href"].lower()
-        text = link.get_text().lower()
+        text = link.get_text().lower().strip()
         for kw in keywords:
             if kw in href or kw in text:
                 full_url = urljoin(base_url, link["href"])
-                if urlparse(full_url).netloc == urlparse(base_url).netloc:
+                if get_domain(full_url) == base_domain:
                     return full_url
     return None
 
@@ -132,12 +109,12 @@ def scrape_team_page(website):
     if not soup:
         return []
     managers = []
-    cards = soup.find_all(["div", "article", "li"], class_=re.compile(r'team|staff|person|member|card', re.I))
+    cards = soup.find_all(["div", "article", "li"], class_=re.compile(r'team|staff|person|member|card|employee', re.I))
     for card in cards:
         text = card.get_text(separator=" ", strip=True)
         name_tag = card.find(["h2", "h3", "h4", "strong", "b"])
         name = name_tag.get_text(strip=True) if name_tag else None
-        if name and len(name.split()) >= 2:
+        if name and len(name.split()) >= 2 and len(name) < 60:
             managers.append({
                 "manager_name": name,
                 "manager_email": extract_email(text),
@@ -159,7 +136,7 @@ def scrape_portfolio_page(website):
         text = item.get_text(separator=" ", strip=True)
         name_tag = item.find(["h2", "h3", "h4", "strong"])
         name = name_tag.get_text(strip=True) if name_tag else None
-        if name:
+        if name and len(name) < 100:
             buildings.append({
                 "building_name": name,
                 "building_address": text[:200] if text else None
@@ -187,7 +164,51 @@ def save_record(record):
     try:
         supabase.table("property_managers").insert(record).execute()
     except Exception as e:
-        print(f"Error saving record: {e}")
+        print(f"Error saving: {e}")
+
+def extract_acmo_companies(soup):
+    """ACMO page has a clean ul list of company name -> external website links"""
+    companies = []
+    main_content = soup.find("div", class_=re.compile(r'content|main|body|field', re.I))
+    if not main_content:
+        main_content = soup
+    list_items = main_content.find_all("li")
+    for li in list_items:
+        link = li.find("a", href=True)
+        if link:
+            href = link["href"]
+            name = link.get_text(strip=True)
+            if not href.startswith("http"):
+                continue
+            if is_skip_domain(href):
+                continue
+            if name and len(name) > 3:
+                companies.append({"name": name, "website": href})
+    return companies
+
+def extract_cci_companies(soup, source_url):
+    """CCI pages vary — try to find external company links"""
+    companies = []
+    seen = set()
+    links = soup.find_all("a", href=True)
+    for link in links:
+        href = link["href"]
+        name = link.get_text(strip=True)
+        if not href.startswith("http"):
+            full_url = urljoin(source_url, href)
+        else:
+            full_url = href
+        if is_skip_domain(full_url):
+            continue
+        if get_domain(full_url) == get_domain(source_url):
+            continue
+        if not name or len(name) < 4 or len(name) > 80:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        companies.append({"name": name, "website": full_url})
+    return companies
 
 def scrape_source(source):
     print(f"\n--- Scraping {source['name']} ---")
@@ -195,30 +216,31 @@ def scrape_source(source):
     if not soup:
         print(f"Could not fetch {source['url']}")
         return
-    links = soup.find_all("a", href=True)
-    companies = []
-    seen = set()
-    for link in links:
-        text = link.get_text(strip=True)
-        href = link["href"]
-        full_url = urljoin(source["url"], href)
-        if is_valid_company_link(text, full_url) and text not in seen:
-            companies.append({"name": text, "website": full_url})
-            seen.add(text)
-    print(f"Found {len(companies)} valid companies")
+
+    if source["name"] == "acmo":
+        companies = extract_acmo_companies(soup)
+    else:
+        companies = extract_cci_companies(soup, source["url"])
+
+    print(f"Found {len(companies)} companies")
+
     for company in companies[:100]:
         name = company["name"]
         website = company["website"]
+
         if record_exists(name, source["name"]):
-            print(f"Skipping {name} — already exists")
+            print(f"Skipping {name} — exists")
             continue
+
         print(f"Processing: {name} — {website}")
         delay()
+
         phone, email, address = scrape_company_details(website)
         delay()
         managers = scrape_team_page(website)
         delay()
         buildings = scrape_portfolio_page(website)
+
         if managers:
             for manager in managers:
                 for building in buildings if buildings else [{}]:
