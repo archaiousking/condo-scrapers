@@ -38,6 +38,56 @@ SOURCES = [
 TEAM_KEYWORDS = ["team", "staff", "people", "about", "management", "our-team", "meet", "who-we-are"]
 PORTFOLIO_KEYWORDS = ["properties", "portfolio", "buildings", "communities", "our-properties", "managed"]
 
+JUNK_KEYWORDS = [
+    "login", "subscribe", "newsletter", "facebook", "twitter", "linkedin",
+    "instagram", "youtube", "mailto", "javascript", "privacy", "terms",
+    "cookie", "sitemap", "careers", "join", "membership", "donate",
+    "sponsor", "advertis", "event", "news", "blog", "forum", "search",
+    "contact us", "home", "learn more", "read more", "click here",
+    "sign up", "log in", "register", "forgot", "reset", "popup"
+]
+
+JUNK_DOMAINS = [
+    "facebook.com", "twitter.com", "linkedin.com", "instagram.com",
+    "youtube.com", "google.com", "apple.com", "microsoft.com",
+    "list-manage.com", "mailchimp.com", "constantcontact.com",
+    "condogenie.com", "cci.ca", "acmo.org", "ccitoronto.ca",
+    "cci-ghc.ca", "ccilondon.ca", "cci-easternontario.ca",
+    "cci-windsor.ca", "cci-grc.ca", "ccihuronia.com",
+    "ccibcchapter.ca", "ccinorthalberta.com", "ccisouthalberta.com",
+    "cci-manitoba.ca", "cci-northsaskatchewan.ca", "cci-southsaskatchewan.ca",
+    "ccinovascotia.ca", "cci-newfoundland.ca"
+]
+
+def is_valid_company_link(text, url):
+    if not text or not url:
+        return False
+    if len(text.strip()) < 4:
+        return False
+    if len(text.strip()) > 80:
+        return False
+    url_lower = url.lower()
+    text_lower = text.lower().strip()
+    if url_lower.startswith("mailto:"):
+        return False
+    if url_lower.startswith("javascript:"):
+        return False
+    if url_lower.startswith("#"):
+        return False
+    if not url_lower.startswith("http"):
+        return False
+    for junk in JUNK_KEYWORDS:
+        if junk in text_lower or junk in url_lower:
+            return False
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().replace("www.", "")
+    for junk_domain in JUNK_DOMAINS:
+        if junk_domain in domain:
+            return False
+    if not re.search(r'[a-zA-Z]{3,}', text):
+        return False
+    return True
+
 def delay():
     time.sleep(random.uniform(3, 7))
 
@@ -151,12 +201,11 @@ def scrape_source(source):
     for link in links:
         text = link.get_text(strip=True)
         href = link["href"]
-        if text and len(text) > 3 and text not in seen:
-            full_url = urljoin(source["url"], href)
-            if urlparse(full_url).netloc != urlparse(source["url"]).netloc:
-                companies.append({"name": text, "website": full_url})
-                seen.add(text)
-    print(f"Found {len(companies)} potential companies")
+        full_url = urljoin(source["url"], href)
+        if is_valid_company_link(text, full_url) and text not in seen:
+            companies.append({"name": text, "website": full_url})
+            seen.add(text)
+    print(f"Found {len(companies)} valid companies")
     for company in companies[:100]:
         name = company["name"]
         website = company["website"]
